@@ -1,0 +1,217 @@
+<!--------------------------------------------------------------------------->  
+<!--                           INTRODUCTION                                
+
+ The Code Project article submission template (HTML version)
+
+Using this template will help us post your article sooner. To use, just 
+follow the 3 easy steps below:
+ 
+     1. Fill in the article description details
+     2. Add links to your images and downloads
+     3. Include the main article text
+
+That's all there is to it! All formatting will be done by our submission
+scripts and style sheets. 
+
+-->  
+<!--------------------------------------------------------------------------->  
+<!--                        IGNORE THIS SECTION                            -->
+<html>
+<head>
+<title>The Code Project</title>
+<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+<Style>
+BODY, P, TD { font-family: Verdana, Arial, Helvetica, sans-serif; font-size: 10pt }
+H2,H3,H4,H5 { color: #ff9900; font-weight: bold; }
+H2 { font-size: 13pt; }
+H3 { font-size: 12pt; }
+H4 { font-size: 10pt; color: black; }
+PRE { BACKGROUND-COLOR: #FBEDBB; FONT-FAMILY: "Courier New", Courier, mono; WHITE-SPACE: pre; }
+CODE { COLOR: #990000; FONT-FAMILY: "Courier New", Courier, mono; }
+</style>
+<link rel="stylesheet" type=text/css href="http://www.codeproject.com/styles/global.css">
+</head>
+<body bgcolor="#FFFFFF" color=#000000>
+<!--------------------------------------------------------------------------->  
+
+
+<!-------------------------------     STEP 1      --------------------------->
+<!--  Fill in the details (CodeProject will reformat this section for you) -->
+
+<pre>
+Title:       Using MSHTML Advanced Hosting Interfaces
+Author:      Nikhil Dabas 
+Email:       ndabas@hotmail.com
+Environment: .NET Framework 1.0 SP1
+Keywords:    WebBrowser Control, AxSHDocVw, MSHTML, IDocHostUIHandler
+Level:       Advanced
+Description: This article shows you how to use the Advanced Hosting Interfaces such as IDocHostUIHandler.
+Section      C#
+SubSection   COM Interop
+</pre>
+
+<hr width=100% noshade>
+
+<!-------------------------------     STEP 2      --------------------------->
+<!--  Include download and sample image information.                       --> 
+
+<ul class=download>
+<li><a href="advhost.zip">Download source code and demo app - 78 KB</a></li>
+</ul>
+
+<!-------------------------------     STEP 3      --------------------------->
+<!--  Add the article text. Please use simple formatting (<h2>, <p> etc)   --> 
+
+<h1>Using MSHTML Advanced Hosting Interfaces</h1>
+
+<h2>Overview</h2>
+<p>This article shows you how to use the MSHTML Advanced Hosting Interfaces, 
+specifically IDocHostUIHandler, from .NET. These interfaces allow you very fine 
+control over the user interface presented by the Microsoft Web Browser Control, 
+for example, you can show your own context menu. I'll show you an easy way to 
+use this interface without having to re-write the interface definitions yourself. 
+As a bonus, I'll show you how to receive events from elements in the document.
+</p>
+
+<h2>The Problem</h2>
+<p>It is easy enough to put a web browser control on a form and 
+get a fully-functional browser right away. But in your application, 
+you might want finer control over how the control interacts with 
+the user. For example, the standard IE context menu does not look 
+particularly nice when you application shows an ultra-cool DHTML-based 
+user interface. An interface called IDocHostUIHandler affords you 
+this level of control.
+</p>
+
+<h2>Implementing IDocHostUIHandler</h2>
+<p>IDocHostUIHandler has to be implemented by your application.
+You can then use ICustomDoc::SetUIHandler to tell MSHTML that
+you have this interface.</p>
+<p>IDocHostUIHandler is defined in MsHtmHst.idl in the Internet 
+Development SDK, part of the Platform SDK. One approach I've seen 
+is to do the import by hand - write the interface definition
+yourself in your source code.</p>
+<p>The other approach, the one I'm going to use, is to create 
+a type library with the interfaces we need declared in it, and 
+then use the tlbimp tool to create an Interop assembly. No 
+fiddling with marshalling yourself.</p>
+<p>The first step would be to create an IDL file with the 
+interfaces we need declared in it. You shall also need 
+a UUID for the generated type library. There are only a few 
+interfaces we need, and the entire IDL becomes:</p>
+<h4>MsHtmHstInterop.idl</h4>
+<pre>
+[
+    uuid(47F05070-FD66-45cc-AD99-74260F94A16B)
+]
+library MsHtmHstInterop
+{
+    import "MsHtmHst.idl";
+    
+    enum tagDOCHOSTUIDBLCLK;
+    enum tagDOCHOSTUIFLAG;
+    enum tagDOCHOSTUITYPE;
+    
+    interface ICustomDoc;
+    interface IDocHostShowUI;
+    interface IDocHostUIHandler;
+    interface IDocHostUIHandler2;
+    interface IHostDialogHelper;
+};
+</pre>
+<p>I've included all the Advanced Hosting interfaces and enumerations 
+here.</p>
+<p>The next step is to generate the type library. Just compile the
+IDL file to get a TLB, using the Platform SDK tool MIDL.
+<pre lang=text>midl MsHtmHstInterop.idl /tlb bin\MsHtmHstInterop.tlb</pre>
+</p>
+<p>Now we need an interop assembly. We just have to use tlbimp 
+on the newly created TLB file:
+<pre lang=text>tlbimp bin\MsHtmHstInterop.tlb /out:bin\MsHtmHstInterop.dll</pre></p>
+<p>Now we can use the interfaces we need with just a <code>using</code> 
+statement in our C# code:</p>
+<h4>HtmlUI.cs (partial)</h4>
+<pre lang=cs>using MsHtmHstInterop;</pre>
+<h2>Wiring up</h2>
+<p>For the sample application, I have put just a single 
+web browser control on a form. The form class implements 
+IDocHostUIHandler.</p>
+<p>To hook up the interface to MSHTML, we first need to 
+get the ICustomDoc interface, and then call the <code>SetUIHandler</code> 
+method with our interface as an argument.</p>
+<h4>HtmlUI.cs (partial - HtmlUIForm constructor)</h4>
+<pre lang=cs>
+public HtmlUIForm()
+{
+    InitializeComponent();
+            
+    this.WebBrowser.DocumentComplete += new DWebBrowserEvents2_DocumentCompleteEventHandler(this.WebBrowser_DocumentComplete);
+            
+    object flags = 0;
+    object targetFrame = String.Empty;
+    object postData = String.Empty;
+    object headers = String.Empty;
+    this.WebBrowser.Navigate("about:blank", ref flags, ref targetFrame, ref postData, ref headers);
+            
+    ICustomDoc cDoc = (ICustomDoc)this.WebBrowser.Document;
+    cDoc.SetUIHandler((IDocHostUIHandler)this);
+            
+    this.WebBrowser.Navigate(@"res://HtmlUI.exe/Sample1.htm", ref flags, ref targetFrame, ref postData, ref headers);
+}
+</pre>
+<p>That's all there is to it. Of course, the form class 
+implements the IDocHostUIHandler member functions.</p>
+
+<h2>HTML files in resources</h2>
+<p>You'll notice that I've used the res: protocol in my code.
+This is a neat way to package your HTML files and other support files 
+- they're in the EXE itself. There are several advantages to this 
+approach: your users cannot easily change the application's user interface, 
+and you don't have to bother with packing more files into your 
+install package.
+</p>
+<p>You just have to make an RC file defining the resource:</p>
+<h4>HtmlUI.rc</h4>
+<pre lang=text>Sample1.htm HTML "Sample1.htm"</pre>
+<p>This can then be compiled to get a RES file. You can 
+add the RES file to your assembly with the /win32res C# compiler 
+switch.</p>
+
+<h2>Handling Document Events</h2>
+<p>If your application has a DHTML-based user interface, you 
+would definitely need to catch events from elements on the page 
+in order to make it functional. If you run the sample app, you 
+can see that clicking the button on the page shows you a message 
+box. This message box has been invoked from the C# app, not from 
+any scripts on the page. Here's the code:
+</p>
+<h4>HtmlUI.cs (partial)</h4>
+<pre lang=cs>
+private void WebBrowser_DocumentComplete(object sender, AxSHDocVw.DWebBrowserEvents2_DocumentCompleteEvent e)
+{
+    // Get the document.
+    IHTMLDocument2 doc = (IHTMLDocument2)this.WebBrowser.Document;
+    
+    // Get a reference to the button.
+    HTMLButtonElement button = (HTMLButtonElement)doc.all.item("theButton", null);
+    
+    // Attach the event handler with the events interface.
+    ((HTMLButtonElementEvents2_Event)button).onclick += new HTMLButtonElementEvents2_onclickEventHandler(this.Button_onclick);
+}
+        
+private bool Button_onclick(IHTMLEventObj e)
+{
+    MessageBox.Show("Alert from the app: Received theButton.onclick!");
+    return true;
+}
+</pre>
+
+<h2>Building the app</h2>
+<p>I have included a makefile which you can use to build from the 
+command prompt. Just use <tt>nmake all</tt> to build the app.
+Note that the <tt>tlbimp mshtml.tlb</tt> step takes a while.
+</p>
+
+<!-------------------------------    That's it!   --------------------------->
+</body>
+</html>
